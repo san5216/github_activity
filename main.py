@@ -13,65 +13,16 @@ def main():
 
     events = get_response(endpoint, username)
 
+    handlers = get_event_handlers()
+
     for event in events:
         event_type = event.get("type", "")
-        repo = event.get('repo', {}).get('name', "Unknown")
 
-        # print(event)
-        match event_type:
-            case "CommitCommentEvent":
-                handle_commit_comment_event(event, repo)
-
-            case "CreateEvent":
-                handle_create_event(event, repo)
-
-            case "DeleteEvent":
-                handle_delete_event(event, repo)
-
-            case "ForkEvent":
-                handle_fork_event(repo)
-
-            case "GollumEvent":
-                handle_gollum_event(event)
-
-            case "IssueCommentEvent":
-                handle_issue_comment_event(event, repo)
-
-            case "IssuesEvent":
-                handle_issues_event(event, repo)
-
-            case "MemberEvent":
-                handle_member_event(event, repo)
-
-            case "PublicEvent":
-                handle_public_event(repo)
-
-            case "PullRequestEvent":
-                handle_pull_request_event(event, repo)
-
-            case "PullRequestReviewEvent":
-                handle_pull_request_review_event(event, repo)
-
-            case "PullRequestReviewCommentEvent":
-                handle_pull_request_review_comment_event(event)
-
-            case "PullRequestReviewThreadEvent":
-                handle_pull_request_review_thread_event(event, repo)
-
-            case "PushEvent":
-                handle_push_event(event, repo)
-
-            case "ReleaseEvent":
-                handle_release_event(event, repo)
-
-            case "SponsorshipEvent":
-                handle_sponsorship_event(event)
-
-            case "WatchEvent":
-                handle_watch_event(repo)
-
-            case _:
-                print("- Unknown Event")
+        event_handler = handlers.get(event_type)
+        if event_handler:
+            event_handler(event)
+        else:
+            print("- Unknown Event")
 
 
 def get_response(endpoint, username):
@@ -95,22 +46,49 @@ def get_response(endpoint, username):
 
     return r.json()
 
+def get_event_handlers():
+    return {
+        "CommitCommentEvent": handle_commit_comment_event,
+        "CreateEvent": handle_create_event,
+        "DeleteEvent": handle_delete_event,
+        "ForkEvent": handle_fork_event,
+        "GollumEvent": handle_gollum_event,
+        "IssueCommentEvent": handle_issue_comment_event,
+        "IssuesEvent": handle_issues_event,
+        "MemberEvent": handle_member_event,
+        "PublicEvent": handle_public_event,
+        "PullRequestEvent": handle_pull_request_event,
+        "PullRequestReviewEvent": handle_pull_request_review_event,
+        "PullRequestReviewCommentEvent": handle_pull_request_review_comment_event,
+        "PullRequestReviewThreadEvent": handle_pull_request_review_thread_event,
+        "PushEvent": handle_push_event,
+        "ReleaseEvent": handle_release_event,
+        "SponsorshipEvent": handle_sponsorship_event,
+        "WatchEvent": handle_watch_event
+    }
 
-def handle_commit_comment_event(event, repo):
+
+def handle_commit_comment_event(event):
+    repo = event.get('repo', {}).get('name', "Unknown")
     commit_id = event.get("payload", {}).get("comment", {}).get("commit_id", "Unknown")
     comment_text = event.get("payload", {}).get("comment", {}).get("body", "No Comment")
     print(f"- Commented on commit {commit_id[:7]} in {repo}: {comment_text[:50]}")
 
 
-def handle_create_event(event, repo):
-    ref_type = event.get('payload').get('ref_type')
+def handle_create_event(event):
+    repo = event.get("repo", {}).get("name", "Unknown")
+    ref_type = event.get("payload").get("ref_type")
+    ref = event.get("payload").get("ref")
     if ref_type == "repository":
         print(f"- Created repo: {repo}")
+    elif ref_type in ["branch", "tag"] and ref:
+        print(f"- Created {ref_type} '{ref}' in {repo}")
     else:
         print(f"- Created {ref_type} in {repo}")
 
 
-def handle_delete_event(event, repo):
+def handle_delete_event(event):
+    repo = event.get('repo', {}).get('name', "Unknown")
     ref_type = event.get('payload').get('ref_type')
     if ref_type == "repository":
         print(f"- Deleted repo: {repo}")
@@ -118,7 +96,8 @@ def handle_delete_event(event, repo):
         print(f"- Deleted {ref_type} in {repo}")
 
 
-def handle_fork_event(repo):
+def handle_fork_event(event):
+    repo = event.get('repo', {}).get('name', "Unknown")
     print(f"- Forked repo {repo}")
 
 
@@ -134,65 +113,76 @@ def handle_gollum_event(event):
         print(f"- Could not process wiki event: {err}")
 
 
-def handle_issue_comment_event(event, repo):
+def handle_issue_comment_event(event):
+    repo = event.get('repo', {}).get('name', "Unknown")
     action = event.get("payload", {}).get("action", "")
-    issue = event.get("payload", {}).get("issue", "").get("title", "")
-    print(f"- {action.capitalize()} comment '{issue}' in {repo}")
+    issue_title = event.get("payload", {}).get("issue", "").get("title", "")
+    comment_body = event.get("payload", {}).get("comment", {}).get("body", "")[:50]
+    print(f"- {action.capitalize()} comment '{issue_title}' in {repo}: {comment_body}")
 
 
-def handle_issues_event(event, repo):
+def handle_issues_event(event):
+    repo = event.get('repo', {}).get('name', "Unknown")
+    action = event.get("payload", {}).get("action", "")
     issue = event.get("payload", {}).get("issue", "unknown").get("title", "")
-    print(f"- Opened a new issue in {repo}: {issue}")
+    print(f"- {action.capitalize()} issue in {repo}: {issue}")
 
 
-def handle_member_event(event, repo):
+def handle_member_event(event):
+    repo = event.get('repo', {}).get('name', "Unknown")
     action = event.get("payload", {}).get("action", "")
     member = event.get("payload", {}).get("member", {}).get("login", "Unknown")
 
-    if action == "added":
-        print(f"- Added {member} to {repo}")
-    elif action == "edited":
-        print(f"- Changed {member} permissions on {repo}")
-    else:
-        print(f"- Deleted {member} from {repo}")
+    action_messages = {
+        "added": f"- Added {member} as collaborator to {repo}",
+        "removed": f"- Removed {member} from {repo}",
+        "edited": f"- Changed {member}'s permissions on {repo}"
+    }
+
+    print(action_messages.get(action, f"- {action} {member} on {repo}"))
 
 
-def handle_public_event(repo):
+def handle_public_event(event):
+    repo = event.get('repo', {}).get('name', "Unknown")
     print(f"- Made {repo} public")
 
 
-def handle_pull_request_event(event, repo):
+def handle_pull_request_event(event):
+    repo = event.get('repo', {}).get('name', "Unknown")
     action = event.get("payload", {}).get("action", "")
     pull_request = event.get("payload", {}).get("pull_request", "unknown").get("title", "")
     print(f"- Pull request {action} on {repo}: {pull_request}")
 
 
-def handle_pull_request_review_event(event, repo):
+def handle_pull_request_review_event(event):
+    repo = event.get('repo', {}).get('name', "Unknown")
     action = event.get("payload", {}).get("action", "")
     print(f"- {action.capitalize()} PR in {repo} ")
 
 
 def handle_pull_request_review_comment_event(event):
+    repo = event.get('repo', {}).get('name', "Unknown")
     action = event.get("payload", {}).get("action", "")
-    comment = event.get("payload", {}).get("comment", {})
-    comment_text = comment.get("body", "")
-    comment_file = comment.get("path", "")
-    location = comment.get("line", "")
-    print(f"- Comment '{comment_text}' {action} in {comment_file} on line {location}")
+    comment_text = event.get("payload", {}).get("comment", {}).get("body", "")[:50]
+    pr_title = event.get("payload", {}).get("pull_request", {}).get("title", "")
+    print(f"- {action.capitalize()} review comment on PR '{pr_title}' in {repo}: {comment_text}")
 
 
-def handle_pull_request_review_thread_event(event, repo):
+def handle_pull_request_review_thread_event(event):
+    repo = event.get('repo', {}).get('name', "Unknown")
     action = event.get("payload", {}).get("action", "")
     pull_request = event.get("payload", {}).get("pull_request", "unknown").get("title", "")
-    print(f"- Marked PR '{pull_request}' thread as {action} on {repo}")
+    print(f"- {action.capitalize()} review thread on PR '{pull_request}' in {repo}")
 
 
-def handle_push_event(event, repo):
+def handle_push_event(event):
+    repo = event.get('repo', {}).get('name', "Unknown")
     commits = len(event.get('payload', {}).get('commits', []))
     print(f"- Pushed {commits} commit{"s" if commits != 1 else ""} to {repo}")
 
 
-def handle_release_event(event, repo):
+def handle_release_event(event):
+    repo = event.get('repo', {}).get('name', "Unknown")
     action = event.get("payload", {}).get("action", "")
     release = event.get("payload", {}).get("release", {}).get("name", "")
     print(f"- {action.capitalize()} {release} of {repo}")
@@ -210,9 +200,12 @@ def handle_sponsorship_event(event):
             print(f"- {sponsor} cancelled their sponsorship of {sponsorable}")
         case "tier_changed":
             print(f"- {sponsor} changed their sponsorship tier for {sponsorable}")
+        case _:
+            print(f"- {sponsor} {action} sponsorship of {sponsorable}")
 
 
-def handle_watch_event(repo):
+def handle_watch_event(event):
+    repo = event.get('repo', {}).get('name', "Unknown")
     print(f"- Starred {repo}")
 
 
